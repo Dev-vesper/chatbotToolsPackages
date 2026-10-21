@@ -3,14 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from core.skills import EDIT_SKILL
 from tools.cer_3.src.searcher import FileMatch, Match
-
-EDIT_SKILL = (
-    "When editing files, work line by line and use the given line numbers to locate "
-    'every change. Return only the edited lines in the same format, "<line number> <code>", '
-    "with correct line numbers and the original indentation. "
-    "Do not resend unchanged code or the entire file."
-)
 
 
 @dataclass(frozen=True, slots=True)

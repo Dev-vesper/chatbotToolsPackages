@@ -4,13 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from core.models import FileEntry
-
-EDIT_SKILL = (
-    "When editing files, work line by line and use the given line numbers to locate "
-    'every change. Return only the edited lines in the same format, "<line number> <code>", '
-    "with correct line numbers and the original indentation. "
-    "Do not resend unchanged code or the entire file."
-)
+from core.skills import EDIT_SKILL
 
 
 @dataclass(frozen=True, slots=True)
