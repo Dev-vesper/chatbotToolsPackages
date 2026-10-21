@@ -153,8 +153,9 @@ class Cer2Page(ToolPage):
         input_card.actions.addWidget(self._clear_button)
 
         hint = QLabel(
-            "Separate files with `## path` headers, then one `<line number> <code>` "
-            "per edited line."
+            "Separate files with `## path` headers. Line numbers apply only to "
+            "existing files that are being edited; use one `<line number> <code>` "
+            "per changed line."
         )
         hint.setObjectName("Muted")
         hint.setWordWrap(True)
