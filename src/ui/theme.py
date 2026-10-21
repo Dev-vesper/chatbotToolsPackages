@@ -3,7 +3,7 @@ from __future__ import annotations
 from string import Template
 
 from PySide6.QtGui import QColor, QFontDatabase, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 COLORS: dict[str, str] = {
     "bg": "#12100e",
@@ -23,6 +23,21 @@ COLORS: dict[str, str] = {
     "primary_text": "#15120f",
     "preview_bg": "#0e0c0a",
     "scroll": "#3a342d",
+    "add_bg": "#18221b",
+    "add_border": "#2f4a39",
+    "add_text": "#a9c8ae",
+    "add_marker": "#7fb28c",
+    "add_chip_bg": "#1b2a20",
+    "add_chip_text": "#b7d7bd",
+    "del_bg": "#251a18",
+    "del_border": "#503630",
+    "del_text": "#d5ada5",
+    "del_marker": "#c68d82",
+    "del_chip_bg": "#2b1d1a",
+    "del_chip_text": "#e3bcb4",
+    "warn_bg": "#282218",
+    "warn_border": "#4c3f28",
+    "warn_text": "#d8c59e",
 }
 
 _MONO_CANDIDATES = ("JetBrains Mono", "Fira Code", "Cascadia Code", "DejaVu Sans Mono")
@@ -189,6 +204,78 @@ QLabel#Badge {
     font-weight: 600;
 }
 
+QLabel#Chip {
+    background-color: $surface_alt;
+    color: $text_muted;
+    border: 1px solid $border;
+    border-radius: 8px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+QLabel#Chip[variant="add"] {
+    background-color: $add_chip_bg;
+    color: $add_chip_text;
+    border-color: $add_border;
+}
+
+QLabel#Chip[variant="del"] {
+    background-color: $del_chip_bg;
+    color: $del_chip_text;
+    border-color: $del_border;
+}
+
+QLabel#Chip[variant="warn"] {
+    background-color: $warn_bg;
+    color: $warn_text;
+    border-color: $warn_border;
+}
+
+QFrame#Banner {
+    border-radius: 6px;
+}
+
+QFrame#Banner[variant="warning"] {
+    background-color: $warn_bg;
+    border: 1px solid $warn_border;
+}
+
+QFrame#Banner[variant="error"] {
+    background-color: $del_chip_bg;
+    border: 1px solid $del_border;
+}
+
+QLabel#BannerText {
+    color: $warn_text;
+    font-size: 11px;
+}
+
+QLabel#BannerText[variant="error"] {
+    color: $del_chip_text;
+}
+
+QLabel#Status {
+    font-size: 11px;
+}
+
+QLabel#Status[variant="success"] {
+    color: $add_chip_text;
+}
+
+QLabel#Status[variant="error"] {
+    color: $del_chip_text;
+}
+
+QLabel#Status[variant="neutral"] {
+    color: $text_muted;
+}
+
+QLabel#ProjectPath {
+    color: $text_dim;
+    font-size: 11px;
+}
+
 QFrame#Card {
     background-color: $surface;
     border: 1px solid $border;
@@ -298,6 +385,21 @@ QPlainTextEdit#Preview {
 QPlainTextEdit#PatternEditor {
     font-family: "$mono";
     font-size: 12px;
+}
+
+QPlainTextEdit#DiffView {
+    background-color: $preview_bg;
+    border: 1px solid $border;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-family: "$mono";
+    font-size: 12px;
+}
+
+QListWidget#FileList {
+    background-color: transparent;
+    border: none;
+    outline: 0;
 }
 
 QTreeWidget {
@@ -424,3 +526,10 @@ def apply_theme(app: QApplication) -> None:
     app.setStyle("Fusion")
     app.setPalette(_build_palette())
     app.setStyleSheet(_QSS.substitute({**COLORS, "mono": _mono_family()}))
+
+
+def repolish(widget: QWidget) -> None:
+    style = widget.style()
+    style.unpolish(widget)
+    style.polish(widget)
+    widget.update()

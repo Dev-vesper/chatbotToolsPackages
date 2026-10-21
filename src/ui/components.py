@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from config import APP_NAME, VERSION
+from ui.theme import repolish
 
 
 def make_button(text: str, variant: str = "default", parent: QWidget | None = None) -> QPushButton:
@@ -161,3 +162,50 @@ class EmptyState(QWidget):
     def set_text(self, title: str, message: str) -> None:
         self._heading.setText(title)
         self._body.setText(message)
+
+
+class Chip(QLabel):
+    def __init__(
+        self,
+        text: str = "",
+        variant: str = "neutral",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(text, parent)
+        self.setObjectName("Chip")
+        self.setProperty("variant", variant)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+
+    def set_variant(self, variant: str) -> None:
+        if self.property("variant") == variant:
+            return
+        self.setProperty("variant", variant)
+        repolish(self)
+
+
+class Banner(QFrame):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("Banner")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 7, 10, 7)
+        layout.setSpacing(0)
+        self._text = QLabel()
+        self._text.setObjectName("BannerText")
+        self._text.setWordWrap(True)
+        layout.addWidget(self._text)
+        self.hide()
+
+    def show_message(self, text: str, variant: str = "warning") -> None:
+        if self.property("variant") != variant:
+            self.setProperty("variant", variant)
+            self._text.setProperty("variant", variant)
+            repolish(self)
+            repolish(self._text)
+        self._text.setText(text)
+        self.show()
+
+    def clear_message(self) -> None:
+        self._text.clear()
+        self.hide()
