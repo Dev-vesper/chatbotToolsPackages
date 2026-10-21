@@ -13,3 +13,17 @@ class FileEntry:
     @property
     def line_count(self) -> int:
         return len(self.content.splitlines())
+
+
+@dataclass(frozen=True, slots=True)
+class SourceFile:
+    path: Path
+    rel_path: str
+    size: int
+
+
+@dataclass(frozen=True, slots=True)
+class ScanResult:
+    files: tuple[SourceFile, ...]
+    skipped: int = 0
+    cancelled: bool = False
