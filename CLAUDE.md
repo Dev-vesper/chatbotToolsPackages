@@ -14,13 +14,14 @@ PySide6 must stay on 6.8.x for this machine: 6.9+ builds abort on import because
 
 ## Architecture
 
-`src/` is the import root. Start the app with `python src/main.py`, not `python -m src.main`; shared imports are absolute from `src`: `ui.*`, `tools.*`, `core.*`, `config`.
+`src/` is the import root. Start the app with `python src/main.py`, not `python -m src.main`; shared imports are absolute from `src`: `ui.*`, `tools.*`, `core.*`, `utils.*`, `config`.
 
 - `src/main.py` creates the `QApplication`, applies the theme, and shows `ui.main_window.MainWindow`.
 - `src/ui/` is the shell and shared design system. `theme.py` is the only place colors/fonts/QSS may be defined. `components.py` holds primitives shared by every tool: `ToolPage` (title/subtitle header + `body_layout`), `Sidebar`, `Card`, `EmptyState`, and button factories. Reusable UI belongs here, not inside a tool.
 - `src/tools/__init__.py` is the registry: `TOOL_PAGES` lists tool page classes, and `MainWindow` builds the sidebar and `QStackedWidget` from each page's `title`/`subtitle`. Keep the registry in sync when adding tools.
-- `src/core/` holds Qt-free data and contracts. `models.FileEntry` is the future scanner/formatter input; `ignore.DEFAULT_IGNORE_PATTERNS` seeds the ignore dialog.
-- `TOOL_PAGES` is currently empty: no tool packages exist yet. The app starts with an empty sidebar and stack.
+- `src/core/` holds Qt-free data and contracts: `models.FileEntry`, `models.SourceFile`, `models.ScanResult`, and `ignore.DEFAULT_IGNORE_PATTERNS`.
+- `src/utils/` holds shared, Qt-free-or-Qt-generic helpers used across tools: `gitignore.IgnoreMatcher`, `scanner.scan_project`, and `tasks.Task`/`CancelToken` background-work wrappers. Promote reusable code here instead of copying it into a tool package.
+- `src/tools/cer_1/` is the first real tool. `src/page.py` orchestrates scanning/selection/preview; `file_tree.py`, `ignore_dialog.py`, `formatter.py`, and `sources.py` are tool-specific. Scanning and preview generation run on a `QThreadPool`; ignore patterns follow `.gitignore` semantics and prune the tree. Background tasks must be cancelled through `CancelToken` on rescans/project changes, and `Cer1Page.shutdown()` is called by `MainWindow.closeEvent`.
 
 ## Required tool package layout
 
