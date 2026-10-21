@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 
 _HEADER_RE = re.compile(r"^\s*##\s+(?P<path>\S.*?)\s*$")
-_EDIT_RE = re.compile(r"^\s*(?P<number>\d+)\s(?P<code>.*)$")
+_EDIT_RE = re.compile(r"^\s*(?P<number>\d+)(?:[ \t](?P<code>.*))?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +61,7 @@ def parse_edits(text: str) -> ParseResult:
                 errors.append(f"Edit line outside a file block: {raw!r}")
                 continue
             current_edits.append(
-                EditLine(int(edit.group("number")), edit.group("code"))
+                EditLine(int(edit.group("number")), edit.group("code") or "")
             )
     flush()
     return ParseResult(tuple(files), tuple(errors))
