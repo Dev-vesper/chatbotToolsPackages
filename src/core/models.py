@@ -27,3 +27,19 @@ class ScanResult:
     files: tuple[SourceFile, ...]
     skipped: int = 0
     cancelled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DiffLine:
+    kind: str
+    text: str
+    old_number: int | None = None
+    new_number: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FileDiff:
+    rel_path: str
+    lines: tuple[DiffLine, ...]
+    additions: int
+    deletions: int
