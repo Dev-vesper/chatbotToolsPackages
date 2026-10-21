@@ -154,3 +154,10 @@ class EmptyState(QWidget):
         layout.addWidget(heading)
         layout.addWidget(body)
         layout.addStretch(1)
+
+        self._heading = heading
+        self._body = body
+
+    def set_text(self, title: str, message: str) -> None:
+        self._heading.setText(title)
+        self._body.setText(message)
