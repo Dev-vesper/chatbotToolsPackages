@@ -18,23 +18,95 @@ def _split_text(text: str) -> tuple[list[str], str, bool]:
     return lines, newline, trailing_newline
 
 
+def _apply_group(old: list[str], new: list[str]) -> list[str]:
+    blocks = [
+        block
+        for block in SequenceMatcher(None, old, new, autojunk=False).get_matching_blocks()
+        if block.size
+    ]
+    candidates = [block for block in blocks if block.a != block.b]
+    anchor = next(
+        (block for block in reversed(candidates) if block.size >= 2), None
+    )
+    if anchor is None and candidates:
+        last = candidates[-1]
+        # A one-line shifted suffix is still a clear insertion anchor when an
+        # earlier run of lines matches in place.
+        if last.b + last.size == len(new) and any(
+            block.size >= 2 and block.a == block.b for block in blocks
+        ):
+            anchor = last
+    if anchor is None:
+        return new
+
+    start = anchor.a
+    stop = anchor.a + anchor.size
+    old_prefix = old[:start]
+    old_suffix = old[stop:]
+    new_prefix = new[:anchor.b]
+    new_suffix = new[anchor.b + anchor.size :]
+
+    common = 0
+    limit = min(len(old_prefix), len(new_prefix))
+    while common < limit and old_prefix[common] == new_prefix[common]:
+        common += 1
+    if common == len(old_prefix):
+        prefix = new_prefix
+    else:
+        prefix = old_prefix + new_prefix[common:]
+
+    # The AI inserted lines and renumbered the rest. Matching lines are
+    # context, not replacements: insert the new lines around them and keep
+    # unmatched old lines instead of deleting them.
+    return [
+        *prefix,
+        *new[anchor.b : anchor.b + anchor.size],
+        *new_suffix,
+        *old_suffix,
+    ]
+
+
 def apply_edits(original: str, edits: tuple[EditLine, ...]) -> tuple[str, list[str]]:
     lines, newline, trailing_newline = _split_text(original)
     warnings: list[str] = []
+    by_line: dict[int, EditLine] = {}
     for edit in edits:
-        index = edit.line_number - 1
-        if index < 0 or index >= len(lines):
+        if edit.line_number < 1 or edit.line_number > len(lines):
             warnings.append(
                 f"Line {edit.line_number} is out of range (file has {len(lines)} lines)"
             )
             continue
-        lines[index] = edit.content
-    result = "\n".join(lines)
+        by_line[edit.line_number] = edit
+
+    ordered = [by_line[number] for number in sorted(by_line)]
+    result: list[str] = []
+    cursor = 0
+    index = 0
+    while index < len(ordered):
+        group = [ordered[index]]
+        index += 1
+        while (
+            index < len(ordered)
+            and ordered[index].line_number == group[-1].line_number + 1
+        ):
+            group.append(ordered[index])
+            index += 1
+
+        start = group[0].line_number - 1
+        end = group[-1].line_number
+        old = lines[start:end]
+        new = [edit.content for edit in group]
+        result.extend(lines[cursor:start])
+        result.extend(_apply_group(old, new))
+        cursor = end
+    result.extend(lines[cursor:])
+
+    text = "\n".join(result)
     if trailing_newline:
-        result += "\n"
+        text += "\n"
     if newline == "\r\n":
-        result = result.replace("\n", "\r\n")
-    return result, warnings
+        text = text.replace("\n", "\r\n")
+    return text, warnings
 
 
 def _format_range(start: int, stop: int) -> str:
