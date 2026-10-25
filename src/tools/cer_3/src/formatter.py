@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from core.skills import EDIT_SKILL
+from core.hashline import compute_tag
+from core.skills import HASHLINE_SKILL
 from tools.cer_3.src.searcher import FileMatch, Match
 
 
@@ -35,7 +36,7 @@ def format_results(
 
     blocks: list[str] = []
     if options.include_edit_skill:
-        blocks.append(f"EDIT SKILL\n{EDIT_SKILL}\n")
+        blocks.append(f"EDIT SKILL\n{HASHLINE_SKILL}\n")
     blocks.append("CODEBASE:\n")
 
     line_total = 0
@@ -48,7 +49,8 @@ def format_results(
         if not numbered:
             continue
         line_total += len(numbered)
-        block = "\n".join((f"## {fm.source.rel_path}", *numbered))
+        tag = compute_tag(fm.content)
+        block = "\n".join((f"[{fm.source.rel_path}#{tag}]", *numbered))
         blocks.append(block + "\n---\n")
 
     text = "\n".join(blocks).rstrip() + "\n"
@@ -62,14 +64,14 @@ def _numbered_lines(
     width: int,
 ) -> list[str]:
     if options.full_files:
-        return [f"{number:>{width}} {line}" for number, line in enumerate(lines, 1)]
+        return [f"{number:>{width}}:{line}" for number, line in enumerate(lines, 1)]
 
     match_numbers = sorted({match.line_number for match in matches})
     ranges = _merge_ranges(match_numbers, options.context_lines, len(lines))
     output: list[str] = []
     for start, end in ranges:
         for number in range(start, end + 1):
-            output.append(f"{number:>{width}} {lines[number - 1]}")
+            output.append(f"{number:>{width}}:{lines[number - 1]}")
     return output
 
 

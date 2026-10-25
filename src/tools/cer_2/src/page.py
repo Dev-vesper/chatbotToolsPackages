@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.hashline import compute_tag
 from core.ignore import DEFAULT_IGNORE_PATTERNS
 from core.models import FileDiff, ScanResult, SourceFile
 from tools.cer_2.src.file_list import FileListWidget
@@ -54,8 +55,8 @@ class PendingEdit:
 class Cer2Page(ToolPage):
     title = "CER-2"
     subtitle = (
-        "Codebase Edit Resolver — paste AI line edits and apply them to your "
-        "files with a before/after diff preview."
+        "Codebase Edit Resolver — paste AI Hashline patches and apply them to "
+        "your files with a before/after diff preview."
     )
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -92,7 +93,7 @@ class Cer2Page(ToolPage):
         self._reset_parse_chips()
         self._clear_preview(
             "Nothing to preview",
-            "Open a project, then paste the AI's line edits above.",
+            "Open a project, then paste the AI's Hashline patches above.",
         )
         self._update_actions()
 
@@ -153,9 +154,10 @@ class Cer2Page(ToolPage):
         input_card.actions.addWidget(self._clear_button)
 
         hint = QLabel(
-            "Separate files with `## path` headers. Line numbers apply only to "
-            "existing files that are being edited; use one `<line number> <code>` "
-            "per changed line."
+            "Separate files with `[path#TAG]` headers, where `TAG` is the "
+            "4-hex snapshot from the source prompt. Use `PUT N.=M:` / `CUT "
+            "N.=M` with `+` body lines; `PUT <N:` / `PUT >N:` insert before "
+            "or after."
         )
         hint.setObjectName("Muted")
         hint.setWordWrap(True)
@@ -163,7 +165,11 @@ class Cer2Page(ToolPage):
 
         self._input = QPlainTextEdit()
         self._input.setObjectName("PatternEditor")
-        self._input.setPlaceholderText("## src/utils/scanner.py\n42 new code")
+        self._input.setPlaceholderText(
+            "[src/utils/scanner.py#A1B2]\n"
+            "PUT 42.=42:\n"
+            "+new code"
+        )
         self._input.textChanged.connect(self._on_input_changed)
         input_card.content.addWidget(self._input, 1)
 
@@ -205,7 +211,7 @@ class Cer2Page(ToolPage):
         self._diff_view = DiffView()
         self._diff_empty = EmptyState(
             "Nothing to preview",
-            "Paste edits above to see a before/after diff.",
+            "Paste patches above to see a before/after diff.",
         )
         self._diff_stack = QStackedWidget()
         self._diff_stack.addWidget(self._diff_view)
@@ -378,6 +384,21 @@ class Cer2Page(ToolPage):
                 except OSError as exc:
                     self._apply_warnings.append(f"{file_edits.rel_path}: {exc}")
                     continue
+
+                if file_edits.tag:
+                    current_tag = compute_tag(original)
+                    if current_tag != file_edits.tag:
+                        self._apply_warnings.append(
+                            f"{file_edits.rel_path}: stale tag {file_edits.tag} "
+                            f"(file is now {current_tag}). Re-read and retry."
+                        )
+                        continue
+                else:
+                    self._apply_warnings.append(
+                        f"{file_edits.rel_path}: header has no #TAG; hashline "
+                        "requires a tag for existing files."
+                    )
+
                 new_text, warnings = apply_edits(original, file_edits.edits)
                 self._apply_warnings.extend(
                     f"{file_edits.rel_path}: {warning}" for warning in warnings
@@ -452,7 +473,7 @@ class Cer2Page(ToolPage):
         if not self._input.toPlainText().strip():
             title, message = (
                 "Nothing to preview",
-                "Paste edits above to see a before/after diff.",
+                "Paste patches above to see a before/after diff.",
             )
         elif self._project is None:
             title, message = (
@@ -462,7 +483,7 @@ class Cer2Page(ToolPage):
         elif self._parsed_edits == 0:
             title, message = (
                 "No edits found",
-                "The response has no numbered edit lines yet.",
+                "The response has no Hashline ops yet.",
             )
         elif issue_text:
             title, message = (

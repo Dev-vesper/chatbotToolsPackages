@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from core.hashline import compute_tag
 from core.models import FileEntry
-from core.skills import EDIT_SKILL
+from core.skills import HASHLINE_SKILL
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +33,7 @@ def format_files(entries: Sequence[FileEntry], options: FormatOptions) -> Format
 
     blocks: list[str] = []
     if options.include_edit_skill:
-        blocks.append(f"EDIT SKILL\n{EDIT_SKILL}\n")
+        blocks.append(f"EDIT SKILL\n{HASHLINE_SKILL}\n")
 
     blocks.append("CODEBASE:\n")
 
@@ -41,8 +42,9 @@ def format_files(entries: Sequence[FileEntry], options: FormatOptions) -> Format
         lines = entry.content.splitlines()
         line_total += len(lines)
         width = len(str(len(lines))) if options.align_line_numbers else 0
-        numbered = [f"{number:>{width}} {line}" for number, line in enumerate(lines, 1)]
-        block = "\n".join((f"## {entry.rel_path}", *numbered))
+        numbered = [f"{number:>{width}}:{line}" for number, line in enumerate(lines, 1)]
+        tag = compute_tag(entry.content)
+        block = "\n".join((f"[{entry.rel_path}#{tag}]", *numbered))
         if options.include_separators:
             block += "\n---"
         blocks.append(block + "\n")

@@ -1,9 +1,19 @@
+"""Hashline applier for CER-2.
+
+Turns the anchored Insert/Delete/Cut/Paste primitives emitted by the parser
+into a new file body. Cut registers are resolved in order; gap inserts land
+before or after their anchor line; range replacements emit their body then
+delete the original span. Diff helpers are unchanged from the pre-Hashline
+version because the FileDiff contract is untouched.
+"""
+
 from __future__ import annotations
 
 from difflib import SequenceMatcher
 
 from core.models import DiffLine, FileDiff
-from tools.cer_2.src.parser import EditLine
+from tools.cer_2.src.parser import Cut, Delete, Edit, Insert, Paste
+
 
 _CONTEXT_LINES = 3
 
@@ -18,88 +28,117 @@ def _split_text(text: str) -> tuple[list[str], str, bool]:
     return lines, newline, trailing_newline
 
 
-def _apply_group(old: list[str], new: list[str]) -> list[str]:
-    blocks = [
-        block
-        for block in SequenceMatcher(None, old, new, autojunk=False).get_matching_blocks()
-        if block.size
-    ]
-    candidates = [block for block in blocks if block.a != block.b]
-    anchor = next(
-        (block for block in reversed(candidates) if block.size >= 2), None
-    )
-    if anchor is None and candidates:
-        last = candidates[-1]
-        # A one-line shifted suffix is still a clear insertion anchor when an
-        # earlier run of lines matches in place.
-        if last.b + last.size == len(new) and any(
-            block.size >= 2 and block.a == block.b for block in blocks
-        ):
-            anchor = last
-    if anchor is None:
-        return new
+class _Clipboard:
+    __slots__ = ("_named", "_anonymous")
 
-    start = anchor.a
-    stop = anchor.a + anchor.size
-    old_prefix = old[:start]
-    old_suffix = old[stop:]
-    new_prefix = new[:anchor.b]
-    new_suffix = new[anchor.b + anchor.size :]
+    def __init__(self) -> None:
+        self._named: dict[str, list[str]] = {}
+        self._anonymous: list[str] = []
 
-    common = 0
-    limit = min(len(old_prefix), len(new_prefix))
-    while common < limit and old_prefix[common] == new_prefix[common]:
-        common += 1
-    if common == len(old_prefix):
-        prefix = new_prefix
-    else:
-        prefix = old_prefix + new_prefix[common:]
+    def store(self, register: str | None, lines: list[str]) -> None:
+        if register:
+            self._named[register] = list(lines)
+        else:
+            self._anonymous = list(lines)
 
-    # The AI inserted lines and renumbered the rest. Matching lines are
-    # context, not replacements: insert the new lines around them and keep
-    # unmatched old lines instead of deleting them.
-    return [
-        *prefix,
-        *new[anchor.b : anchor.b + anchor.size],
-        *new_suffix,
-        *old_suffix,
-    ]
+    def fetch(self, register: str | None) -> list[str] | None:
+        if register:
+            return self._named.get(register)
+        return self._anonymous if self._anonymous else None
 
 
-def apply_edits(original: str, edits: tuple[EditLine, ...]) -> tuple[str, list[str]]:
+def apply_edits(original: str, edits: tuple[Edit, ...]) -> tuple[str, list[str]]:
     lines, newline, trailing_newline = _split_text(original)
     warnings: list[str] = []
-    by_line: dict[int, EditLine] = {}
+    clipboard = _Clipboard()
+
+    before_inserts: dict[int, list[str]] = {}
+    after_inserts: dict[int, list[str]] = {}
+    replacements: dict[int, list[str]] = {}
+    deletes: set[int] = set()
+    bof_inserts: list[str] = []
+    eof_inserts: list[str] = []
+    span_pastes: list[tuple[int, int, str | None]] = []
+
     for edit in edits:
-        if edit.line_number < 1 or edit.line_number > len(lines):
+        if isinstance(edit, Insert):
+            if edit.position == "bof":
+                bof_inserts.append(edit.text)
+            elif edit.position == "eof":
+                eof_inserts.append(edit.text)
+            elif edit.position == "before":
+                if edit.anchor is None:
+                    continue
+                if edit.replacement:
+                    replacements.setdefault(edit.anchor, []).append(edit.text)
+                else:
+                    before_inserts.setdefault(edit.anchor, []).append(edit.text)
+            elif edit.position == "after":
+                if edit.anchor is None:
+                    continue
+                after_inserts.setdefault(edit.anchor, []).append(edit.text)
+        elif isinstance(edit, Delete):
+            deletes.add(edit.line)
+        elif isinstance(edit, Cut):
+            start = edit.start - 1
+            end = edit.end
+            if start < 0 or end > len(lines):
+                warnings.append(
+                    f"CUT range {edit.start}.={edit.end} is outside the file"
+                )
+                continue
+            clipboard.store(edit.register, lines[start:end])
+        elif isinstance(edit, Paste):
+            if edit.position == "span" and edit.span is not None:
+                span_pastes.append((edit.span[0], edit.span[1], edit.register))
+            elif edit.position == "before" and edit.anchor is not None:
+                captured = clipboard.fetch(edit.register)
+                if captured is None:
+                    warnings.append(
+                        f"paste before line {edit.anchor}: register not populated"
+                    )
+                    continue
+                before_inserts.setdefault(edit.anchor, []).extend(captured)
+            elif edit.position == "after" and edit.anchor is not None:
+                captured = clipboard.fetch(edit.register)
+                if captured is None:
+                    warnings.append(
+                        f"paste after line {edit.anchor}: register not populated"
+                    )
+                    continue
+                after_inserts.setdefault(edit.anchor, []).extend(captured)
+            elif edit.position == "bof":
+                captured = clipboard.fetch(edit.register)
+                if captured is not None:
+                    bof_inserts.extend(captured)
+            elif edit.position == "eof":
+                captured = clipboard.fetch(edit.register)
+                if captured is not None:
+                    eof_inserts.extend(captured)
+
+    for start, end, register in span_pastes:
+        captured = clipboard.fetch(register)
+        if captured is None:
             warnings.append(
-                f"Line {edit.line_number} is out of range (file has {len(lines)} lines)"
+                f"paste over {start}.={end}: register not populated"
             )
             continue
-        by_line[edit.line_number] = edit
+        for n in range(start, end + 1):
+            deletes.add(n)
+        replacements.setdefault(start, []).extend(captured)
 
-    ordered = [by_line[number] for number in sorted(by_line)]
     result: list[str] = []
-    cursor = 0
-    index = 0
-    while index < len(ordered):
-        group = [ordered[index]]
-        index += 1
-        while (
-            index < len(ordered)
-            and ordered[index].line_number == group[-1].line_number + 1
-        ):
-            group.append(ordered[index])
-            index += 1
-
-        start = group[0].line_number - 1
-        end = group[-1].line_number
-        old = lines[start:end]
-        new = [edit.content for edit in group]
-        result.extend(lines[cursor:start])
-        result.extend(_apply_group(old, new))
-        cursor = end
-    result.extend(lines[cursor:])
+    result.extend(bof_inserts)
+    for idx, line_text in enumerate(lines, 1):
+        if idx in before_inserts:
+            result.extend(before_inserts[idx])
+        if idx in replacements:
+            result.extend(replacements[idx])
+        if idx not in deletes:
+            result.append(line_text)
+        if idx in after_inserts:
+            result.extend(after_inserts[idx])
+    result.extend(eof_inserts)
 
     text = "\n".join(result)
     if trailing_newline:
@@ -108,6 +147,8 @@ def apply_edits(original: str, edits: tuple[EditLine, ...]) -> tuple[str, list[s
         text = text.replace("\n", "\r\n")
     return text, warnings
 
+
+# ---- Diff building (unchanged contract) ----
 
 def _format_range(start: int, stop: int) -> str:
     beginning = start + 1
